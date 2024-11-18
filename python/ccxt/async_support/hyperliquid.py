@@ -450,6 +450,13 @@ class hyperliquid(Exchange, ImplicitAPI):
             innerBaseTokenInfo = self.safe_dict(baseTokenInfo, 'spec', baseTokenInfo)
             # innerQuoteTokenInfo = self.safe_dict(quoteTokenInfo, 'spec', quoteTokenInfo)
             amountPrecision = self.safe_integer(innerBaseTokenInfo, 'szDecimals')
+            price = self.safe_number(extraData, 'midPx', 0)
+            if 0 < price < 1:
+                pricePrecision = int(abs(math.log10(price))) + 5  # 5 significant digits
+                pricePrecision = min(8 - amountPrecision, pricePrecision)  # 8 max decimals
+            else:
+                integer_digits = 1 if price == 0 else int(math.log10(price)) + 1
+                pricePrecision = min(8 - amountPrecision, 5 - integer_digits)  # 8 max decimals, 5 significant digits
             # quotePrecision = self.parse_number(self.parse_precision(self.safe_string(innerQuoteTokenInfo, 'szDecimals')))
             baseId = self.number_to_string(i + 10000)
             markets.append(self.safe_market_structure({
@@ -481,7 +488,7 @@ class hyperliquid(Exchange, ImplicitAPI):
                 'optionType': None,
                 'precision': {
                     'amount': amountPrecision,  # decimal places
-                    'price': 8 - amountPrecision,  # MAX_DECIMALS is 8
+                    'price': pricePrecision,  # MAX_DECIMALS is 8
                 },
                 'limits': {
                     'leverage': {
@@ -543,6 +550,13 @@ class hyperliquid(Exchange, ImplicitAPI):
         taker = self.safe_number(fees, 'taker')
         maker = self.safe_number(fees, 'maker')
         amountPrecision = self.safe_integer(market, 'szDecimals')
+        price = self.safe_number(market, 'markPx', 0)  # use markPx, midPx is sometimes None
+        if 0 < price < 1:
+            pricePrecision = int(abs(math.log10(price))) + 5  # 5 significant digits
+            pricePrecision = min(6 - amountPrecision, pricePrecision)  # 6 max decimals
+        else:
+            integer_digits = 1 if price == 0 else int(math.log10(price)) + 1
+            pricePrecision = min(6 - amountPrecision, 5 - integer_digits)  # 8 max decimals, 5 significant digits
         return self.safe_market_structure({
             'id': baseId,
             'symbol': symbol,
@@ -571,7 +585,7 @@ class hyperliquid(Exchange, ImplicitAPI):
             'optionType': None,
             'precision': {
                 'amount': amountPrecision,  # decimal places
-                'price': 6 - amountPrecision,  # MAX_DECIMALS is 6
+                'price': pricePrecision,  # MAX_DECIMALS is 6
             },
             'limits': {
                 'leverage': {
