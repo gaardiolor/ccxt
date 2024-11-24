@@ -374,7 +374,14 @@ export default class hyperliquid extends Exchange {
         let pricePrecision = 0;
         // We might get 2 dots, doesn't matter
         const priceStr = this.numberToString (price) + '.';
-        if (price > 0 && price < 1) {
+        if (price === 0) {
+            // Significant digits is always 5 in this case
+            const significantDigits = this.parseToInt ('5');
+            // Integer digits is always 0 in this case (0 doesn't count)
+            const integerDigits = this.parseToInt ('0');
+            // Calculate the price precision
+            pricePrecision = Math.min (maxDecimals - amountPrecision, significantDigits - integerDigits);
+        } else if (price > 0 && price < 1) {
             // Significant digits, always 5 in this case
             const significantDigits = this.parseToInt ('5');
             // Get the part after the decimal separator
