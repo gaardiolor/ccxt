@@ -361,6 +361,55 @@ export default class hyperliquid extends Exchange {
         return this.parseMarkets (result);
     }
 
+    calculateLeadingZeros (price: number) {
+        let leadingZeros = -1;
+        while (price < 1) {
+            price = price * 10;
+            leadingZeros = leadingZeros + 1;
+        }
+        return leadingZeros;
+    }
+
+    calculateIntegerDigits (price: number) {
+        let integerDigits = 0;
+        while (price > 1) {
+            price = price / 10;
+            integerDigits = integerDigits + 1;
+        }
+        return integerDigits;
+    }
+
+    /**
+     * @method
+     * @name calculatePricePrecision
+     * @description Helper function to calculate the Hyperliquid DECIMAL_PLACES price precision
+     * @param {float} price the price to use in the calculation
+     * @param {int} amountPrecision the amountPrecision to use in the calculation
+     * @param {int} maxDecimals the maxDecimals to use in the calculation
+     * @returns {int} The calculated price precision
+     */
+    calculatePricePrecision (price: number, amountPrecision: number, maxDecimals: number) {
+        let pricePrecision = 0;
+        if (price > 0 && price < 1) {
+            // Significant digits, always 5 in this case
+            const significantDigits = this.parseToInt ('5');
+            // Count the number of leading zeros in the decimal part.
+            const leadingZeros = this.calculateLeadingZeros (price);
+            // Calculate decimal places based on leading zeros and significant digits
+            pricePrecision = leadingZeros + significantDigits;
+            // Take the lesser of the calculated decimal places and (maxDecimals - szDecimals)
+            pricePrecision = Math.min (maxDecimals - amountPrecision, pricePrecision);
+        } else {
+            // Count the numbers before the decimal separator
+            const integerDigits = this.calculateIntegerDigits (price);
+            // Get significant digits (5 or the integer digits count, whichever is higher)
+            const significantDigits = Math.max (5, integerDigits);
+            // Calculate decimal places based on significant digits and integer digits
+            pricePrecision = Math.min (maxDecimals - amountPrecision, significantDigits - integerDigits);
+        }
+        return pricePrecision;
+    }
+
     /**
      * @method
      * @name hyperliquid#fetchMarkets
@@ -451,6 +500,8 @@ export default class hyperliquid extends Exchange {
             const innerBaseTokenInfo = this.safeDict (baseTokenInfo, 'spec', baseTokenInfo);
             // const innerQuoteTokenInfo = this.safeDict (quoteTokenInfo, 'spec', quoteTokenInfo);
             const amountPrecision = this.safeInteger (innerBaseTokenInfo, 'szDecimals');
+            const price = this.safeNumber (extraData, 'midPx');
+            const pricePrecision = this.calculatePricePrecision (price, amountPrecision, 8);
             // const quotePrecision = this.parseNumber (this.parsePrecision (this.safeString (innerQuoteTokenInfo, 'szDecimals')));
             const baseId = this.numberToString (i + 10000);
             markets.push (this.safeMarketStructure ({
@@ -481,8 +532,8 @@ export default class hyperliquid extends Exchange {
                 'strike': undefined,
                 'optionType': undefined,
                 'precision': {
-                    'amount': amountPrecision, // decimal places
-                    'price': 8 - amountPrecision, // MAX_DECIMALS is 8
+                    'amount': amountPrecision,
+                    'price': pricePrecision,
                 },
                 'limits': {
                     'leverage': {
@@ -548,6 +599,8 @@ export default class hyperliquid extends Exchange {
         const taker = this.safeNumber (fees, 'taker');
         const maker = this.safeNumber (fees, 'maker');
         const amountPrecision = this.safeInteger (market, 'szDecimals');
+        const price = this.safeNumber (market, 'markPx', 0);
+        const pricePrecision = this.calculatePricePrecision (price, amountPrecision, 6);
         return this.safeMarketStructure ({
             'id': baseId,
             'symbol': symbol,
@@ -575,8 +628,8 @@ export default class hyperliquid extends Exchange {
             'strike': undefined,
             'optionType': undefined,
             'precision': {
-                'amount': amountPrecision, // decimal places
-                'price': 6 - amountPrecision, // MAX_DECIMALS is 6
+                'amount': amountPrecision,
+                'price': pricePrecision,
             },
             'limits': {
                 'leverage': {
@@ -1053,10 +1106,11 @@ export default class hyperliquid extends Exchange {
 
     priceToPrecision (symbol: string, price): string {
         const market = this.market (symbol);
-        // https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size
-        const result = this.decimalToPrecision (price, ROUND, 5, SIGNIFICANT_DIGITS, this.paddingMode);
-        const decimalParsedResult = this.decimalToPrecision (result, ROUND, market['precision']['price'], this.precisionMode, this.paddingMode);
-        return decimalParsedResult;
+        const integerDigits = this.calculateIntegerDigits (price);
+        const significantDigits = Math.max (5, integerDigits);
+        const result = this.decimalToPrecision (price, ROUND, significantDigits, SIGNIFICANT_DIGITS, this.paddingMode);
+        const maxDecimals = market['spot'] ? this.parseToInt ('8') : this.parseToInt ('6');
+        return this.decimalToPrecision (result, ROUND, maxDecimals - market['precision']['amount'], this.precisionMode, this.paddingMode);
     }
 
     hashMessage (message) {
